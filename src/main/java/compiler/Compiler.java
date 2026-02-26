@@ -3,8 +3,42 @@
  */
 package compiler;
 
+import compiler.Lexer.Lexer;
+import compiler.Lexer.Symbol;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.Reader;
+
 public class Compiler {
+
     public static void main(String[] args) {
-        System.out.println("Hello from the compiler !");
+        if (args.length >= 2 && args[0].equals("-lexer")) {
+            String path = args[1];
+
+            try (Reader r = new BufferedReader(new FileReader(path))) {
+                Lexer lexer = new Lexer(r);
+
+                while (true) {
+                    Symbol s = lexer.getNextSymbol();
+                    System.out.println(s); 
+
+                    if (s.type == Symbol.Type.END_FILE) {
+                        break;
+                    }
+                }
+
+            } catch (RuntimeException e) {
+                System.err.println(e.getMessage());
+                System.exit(1);
+            } catch (IOException e) {
+                System.err.println("I/O error: " + e.getMessage());
+                System.exit(1);
+            }
+
+            return;
+        }
+
     }
 }
