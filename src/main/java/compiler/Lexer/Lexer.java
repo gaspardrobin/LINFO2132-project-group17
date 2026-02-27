@@ -1,8 +1,7 @@
 package compiler.Lexer;
-import java.io.Reader;
-
 import java.io.IOException;
 import java.io.PushbackReader;
+import java.io.Reader;
 
 import compiler.Lexer.Symbol.Type;
 
@@ -174,8 +173,12 @@ public class Lexer {
         }
 
         String raw = sb.toString();
-        String norm = raw.replaceFirst("^0+(?!$)", "");
-        return new Symbol(Type.INT, norm);
+        if (seen_dot) {
+            return new Symbol(Type.FLOAT, raw);
+        } else { 
+            String norm = raw.replaceFirst("^0+(?!$)", "");
+            return new Symbol(Type.INT, norm);
+        }
     }
 
     private Symbol read_string() throws IOException {
