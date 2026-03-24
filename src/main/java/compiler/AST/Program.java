@@ -4,14 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import compiler.AST.statements.Statement;
-
 // Root of the AST, representing the entire program 
 public class Program extends ASTNode {
-    public final List<Statement> statements = new ArrayList<>();
+    public final List<ASTNode> declarations = new ArrayList<>();
 
-    public void addStatement(Statement stmt) {
-        statements.add(stmt);
+    public void add(ASTNode node) {
+        declarations.add(node);
     }
 
     @Override
@@ -23,21 +21,19 @@ public class Program extends ASTNode {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         Program program = (Program) o;
-
-        return Objects.equals(statements, program.statements);
+        return Objects.equals(declarations, program.declarations);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(statements);
+        return Objects.hash(declarations);
     }
 
     public void printTree() {
         System.out.println(this.toString());
-        for (Statement s : statements) {
-            s.print("  ");
+        for (ASTNode node : declarations) {
+            node.print("  ");
         }
     }
 }

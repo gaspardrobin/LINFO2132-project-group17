@@ -6,7 +6,7 @@ import compiler.AST.expressions.Expression;
 import compiler.AST.expressions.Identifier;
 import compiler.AST.types.TypeNode;
 
-// Represents a for loop statement, e.g. "FOR INT i IN 0..10 STEP 1 { ... }"
+// Represents a for loop statement, e.g. "for (INT i; 1 -> 100; i+1) { ... }"
 public class ForStatement extends Statement {
     public final TypeNode varType; // can be null if it has already been declared before the loop
     public final Identifier varName;

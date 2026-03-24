@@ -9,7 +9,7 @@ public class Symbol {
         EQ, NEQ, LT, GT, LE, GE,
         AND, OR,
         LPAR, RPAR, LBRACE, RBRACE, LBRACKET, RBRACKET,
-        DOT, SEMI, COMMA, END_FILE
+        DOT, ARROW, SEMI, COMMA, END_FILE
     }
 
     public final Type type;     

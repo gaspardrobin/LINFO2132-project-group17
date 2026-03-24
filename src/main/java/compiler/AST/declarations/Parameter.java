@@ -40,7 +40,7 @@ public class Parameter extends ASTNode {
     @Override
     public void print(String prefix) {
         System.out.println(prefix + this.toString());
-        System.out.println(prefix + "  " + type.toString());
+        type.print(prefix + "  ");
         System.out.println(prefix + "  " + name.toString());
     }
 }

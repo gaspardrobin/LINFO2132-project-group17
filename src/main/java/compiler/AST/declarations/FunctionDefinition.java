@@ -45,8 +45,9 @@ public class FunctionDefinition extends ASTNode {
         return Objects.hash(returnType, name, parameters, body);
     }
 
-    @Override
+@Override
     public void print(String prefix) {
+        System.out.println(prefix + this.toString());
         if (returnType != null) {
             System.out.println(prefix + "  Return Type: " + returnType.toString());
         } else {

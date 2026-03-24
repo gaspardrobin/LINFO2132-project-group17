@@ -36,9 +36,10 @@ public class ArrayCreation extends Expression {
 
     @Override
     public void print(String prefix) {
-        System.out.println(prefix + this.toString());
-        System.out.println(prefix + "  Base Type:" + baseType.toString());
+        System.out.println(prefix + "ArrayCreation");
+        System.out.println(prefix + "  BaseType:");
+        baseType.print(prefix + "    ");
         System.out.println(prefix + "  Size:");
-        size.print(prefix + "  ");
+        size.print(prefix + "    ");
     }
 }

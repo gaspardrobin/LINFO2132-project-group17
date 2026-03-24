@@ -30,8 +30,8 @@ public class ArrayType extends TypeNode {
 
     @Override
     public void print(String prefix) {
-        System.out.println(prefix + this.toString() + " of ");
-        System.out.println(elementType.toString());
+        System.out.println(prefix + "ArrayType");
+        elementType.print(prefix + "  ");
     }
     
 }

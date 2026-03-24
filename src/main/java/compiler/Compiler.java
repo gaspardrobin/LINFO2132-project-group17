@@ -3,8 +3,10 @@
  */
 package compiler;
 
+import compiler.AST.Program;
 import compiler.Lexer.Lexer;
 import compiler.Lexer.Symbol;
+import compiler.Parser.Parser;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -14,10 +16,16 @@ import java.io.Reader;
 public class Compiler {
 
     public static void main(String[] args) {
-        if (args.length >= 2 && args[0].equals("-lexer")) {
-            String path = args[1];
+        if (args.length != 2) {
+            System.exit(1);
+        }
 
-            try (Reader r = new BufferedReader(new FileReader(path))) {
+        String mode = args[0];
+        String path = args[1];
+
+        try (Reader r = new BufferedReader(new FileReader(path))) {
+
+            if (mode.equals("-lexer")) {
                 Lexer lexer = new Lexer(r);
 
                 while (true) {
@@ -28,17 +36,28 @@ public class Compiler {
                         break;
                     }
                 }
-
-            } catch (RuntimeException e) {
-                System.err.println(e.getMessage());
-                System.exit(1);
-            } catch (IOException e) {
-                System.err.println("I/O error: " + e.getMessage());
-                System.exit(1);
+                return;
             }
 
-            return;
-        }
+            if (mode.equals("-parser")) {
+                Lexer lexer = new Lexer(r);
+                Parser parser = new Parser(lexer);
+                Program ast = parser.getAST();
 
+                ast.printTree();
+                return;
+            }
+
+            System.err.println("Unknown option: " + mode);
+            System.err.println("Use -lexer or -parser");
+            System.exit(1);
+
+        } catch (RuntimeException e) {
+            System.err.println(e.getMessage());
+            System.exit(1);
+        } catch (IOException e) {
+            System.err.println("I/O error: " + e.getMessage());
+            System.exit(1);
+        }
     }
 }

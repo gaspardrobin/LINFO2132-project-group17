@@ -225,6 +225,13 @@ public class Lexer {
             return new Symbol(Type.ASSIGN, "=");
         }
 
+        if (first == '-') {
+            int c2 = read();
+            if (c2 == '>') return new Symbol(Type.ARROW, "->");
+            if (c2 != -1) unread((char) c2);
+            return new Symbol(Type.MINUS, "-");
+        }
+
         if (first == '<') {
             int c2 = read();
             if (c2 == '=') return new Symbol(Type.LE, "<=");
@@ -252,7 +259,6 @@ public class Lexer {
         }
         switch (first) {
             case '+': return new Symbol(Type.PLUS, "+");
-            case '-': return new Symbol(Type.MINUS, "-");
             case '*': return new Symbol(Type.STAR, "*");
             case '/': return new Symbol(Type.SLASH, "/");
             case '%': return new Symbol(Type.PERCENT, "%");
