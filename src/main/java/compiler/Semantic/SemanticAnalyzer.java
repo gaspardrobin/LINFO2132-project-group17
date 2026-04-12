@@ -1,13 +1,40 @@
 package compiler.Semantic;
 
+import java.util.ArrayList;
+
 import compiler.AST.ASTNode;
 import compiler.AST.Program;
-import compiler.AST.declarations.*;
-import compiler.AST.expressions.*;
-import compiler.AST.statements.*;
-import compiler.AST.types.*;
-
-import java.util.ArrayList;
+import compiler.AST.declarations.CollectionDefinition;
+import compiler.AST.declarations.ConstantDeclaration;
+import compiler.AST.declarations.FieldDeclaration;
+import compiler.AST.declarations.FunctionDefinition;
+import compiler.AST.declarations.Parameter;
+import compiler.AST.expressions.ArrayAccess;
+import compiler.AST.expressions.ArrayCreation;
+import compiler.AST.expressions.BinaryExpression;
+import compiler.AST.expressions.BooleanLiteral;
+import compiler.AST.expressions.CollectionInstantiation;
+import compiler.AST.expressions.Expression;
+import compiler.AST.expressions.FieldAccess;
+import compiler.AST.expressions.FloatLiteral;
+import compiler.AST.expressions.FunctionCall;
+import compiler.AST.expressions.Identifier;
+import compiler.AST.expressions.IntegerLiteral;
+import compiler.AST.expressions.StringLiteral;
+import compiler.AST.expressions.UnaryExpression;
+import compiler.AST.statements.Assignment;
+import compiler.AST.statements.Block;
+import compiler.AST.statements.ExpressionStatement;
+import compiler.AST.statements.ForStatement;
+import compiler.AST.statements.IfStatement;
+import compiler.AST.statements.ReturnStatement;
+import compiler.AST.statements.Statement;
+import compiler.AST.statements.VariableDeclaration;
+import compiler.AST.statements.WhileStatement;
+import compiler.AST.types.ArrayType;
+import compiler.AST.types.BaseType;
+import compiler.AST.types.CollectionType;
+import compiler.AST.types.TypeNode;
 
 public class SemanticAnalyzer {
     
@@ -370,5 +397,221 @@ public class SemanticAnalyzer {
     private TypeNode checkExpressionStatement(ExpressionStatement node) {
         checkNode(node.expression);
         return null; // expression statements do not have a type
+    }
+
+    private TypeNode checkBinaryExpression(BinaryExpression node) {
+        TypeNode leftType = checkNode(node.left);
+        TypeNode rightType = checkNode(node.right);
+
+        // binary operators only apply to base types
+        if (!(leftType instanceof BaseType) || !(rightType instanceof BaseType)) {
+            throwError("OperatorError: Binary operators only support base types.");        
+        }
+
+        String leftName = ((BaseType) leftType).name;
+        String rightName = ((BaseType) rightType).name;
+
+        // Artihmetic operators
+        if (node.operator.matches("\\+|\\-|\\*|/")) {
+            if (node.operator.equals("+") && (leftName.equals("STRING") || rightName.equals("STRING"))) {
+                return new BaseType("STRING"); // string concatenation
+            }
+            if ((leftName.equals("INT") || leftName.equals("FLOAT")) && (rightName.equals("INT") || rightName.equals("FLOAT"))) {
+                if (leftName.equals("FLOAT") || rightName.equals("FLOAT")) {
+                    return new BaseType("FLOAT"); // if either operand is FLOAT, the result is FLOAT
+                }
+                return new BaseType("INT");
+            }
+            throwError("OperatorError: Operator '" + node.operator + "' cannot be applied to types " + leftType + " and " + rightType);
+        }
+
+        // Modulo
+        if (node.operator.equals("%")) {
+            if (leftName.equals("INT") && rightName.equals("INT")) {
+                return new BaseType("INT");
+            }
+            throwError("OperatorError: Modulo operator '%' can only be applied to INT types.");
+        }   
+
+        // Boolean operators
+        if (node.operator.equals("&&") || node.operator.equals("||")) {
+            if (leftName.equals("BOOL") && rightName.equals("BOOL")) {
+                return new BaseType("BOOL");
+            }
+            throwError("OperatorError: Boolean operator '" + node.operator + "' can only be applied to BOOL types.");
+        }
+
+        // Relational operators
+        if (node.operator.matches("<|>|<=|>=")) {
+            if ((leftName.equals("INT") || leftName.equals("FLOAT")) && (rightName.equals("INT") || rightName.equals("FLOAT"))) {
+                return new BaseType("BOOL");
+            }
+            throwError("OperatorError: Relational operator '" + node.operator + "' can only be applied to INT or FLOAT types.");
+        }
+
+        // Equality operators
+        if (node.operator.equals("==") || node.operator.equals("=/=")) {
+            boolean isNumericMatch = (leftName.equals("INT") || leftName.equals("FLOAT")) && (rightName.equals("INT") || rightName.equals("FLOAT"));
+            if (leftName.equals(rightName) || isNumericMatch) {
+                return new BaseType("BOOL");
+            }
+            throwError("OperatorError: Equality operator '" + node.operator + "' can only be applied to compatible types.");
+        }
+
+        throwError("OperatorError: Unrecognized binary operator '" + node.operator + "'.");
+        return null; 
+    }
+
+    private TypeNode checkUnaryExpression(UnaryExpression node) {
+        TypeNode operandType = checkNode(node.operand);
+
+        // unary operators only apply to base types
+        if (!(operandType instanceof BaseType)) {
+            throwError("OperatorError: Unary operators only support base types.");        
+        }
+
+        String operandName = ((BaseType) operandType).name;
+
+        if (node.operator.equals("-")) {
+            if (operandName.equals("INT") || operandName.equals("FLOAT")) {
+                return operandType; // the result type is the same as the operand type
+            }
+            throwError("OperatorError: Unary '-' operator can only be applied to INT or FLOAT types.");
+        }
+
+        if (node.operator.equals("not")) {
+            if (operandName.equals("BOOL")) {
+                return new BaseType("BOOL");
+            }
+            throwError("OperatorError: Unary 'not' operator can only be applied to BOOL types.");
+        }
+
+        throwError("OperatorError: Unrecognized unary operator '" + node.operator + "'.");
+        return null;
+    }
+
+    private TypeNode checkFunctionCall(FunctionCall node) {
+        // Cannot call functions while analyzing constant declarations
+        if (isAnalyzingConstant) {
+            throwError("TypeError: Function calls are not allowed in constant declarations.");
+        }
+
+        String funcName = node.functionName.name;
+
+        // handle polymorphic native functions
+        if (funcName.equals("print") || funcName.equals("println")) {
+            // They accept anything, we just verify that the arguments are semantically correct
+            for (Expression arg : node.arguments) checkNode(arg); 
+            return new BaseType("VOID"); 
+        }
+        if (funcName.equals("length")) {
+            if (node.arguments.size() != 1) {
+                throwError("ArgumentError: length() takes exactly 1 argument.");
+            }
+            TypeNode argType = checkNode(node.arguments.get(0));
+            // length() can be applied to strings and arrays
+            if (!(argType instanceof ArrayType) && !argType.equals(new BaseType("STRING"))) {
+                throwError("ArgumentError: length() requires a STRING or ARRAY operand.");
+            }
+            return new BaseType("INT");
+        }
+
+        // handle classic function calls
+        FunctionDefinition funcDef = symbolTable.lookupFunction(funcName); // throws ScopeError if not declared
+
+        if (node.arguments.size() != funcDef.parameters.size()) {
+            throwError("ArgumentError: Function '" + funcName + "' expects " + funcDef.parameters.size() + " arguments, got " + node.arguments.size());
+        }
+
+        for (int i = 0; i < node.arguments.size(); i++) {
+            TypeNode argType = checkNode(node.arguments.get(i));
+            TypeNode paramType = funcDef.parameters.get(i).type;
+
+            boolean isIntToFloat = paramType.equals(new BaseType("FLOAT")) && argType.equals(new BaseType("INT"));
+            
+            if (!paramType.equals(argType) && !isIntToFloat) {
+                throwError("ArgumentError: Type mismatch for argument " + (i+1) + " in function '" + funcName + "'. Expected " + paramType + " but got " + argType);
+            }
+        }
+
+        return funcDef.returnType == null ? new BaseType("VOID") : funcDef.returnType;
+    }
+
+    private TypeNode checkArrayAccess(ArrayAccess node) {
+        TypeNode arrayType = checkNode(node.array);
+        TypeNode indexType = checkNode(node.index);
+
+
+        if (!indexType.equals(new BaseType("INT"))) {
+            throwError("TypeError: Array index must be of type INT, got '" + indexType + "'.");
+        }
+        if (arrayType instanceof ArrayType) {
+            return ((ArrayType) arrayType).elementType;
+        } else if (arrayType.equals(new BaseType("STRING"))) {
+            // chars of a string are treated as INTs
+            return new BaseType("INT");
+        } else {
+            throwError("TypeError: Cannot index a non-array and non-string type.");
+        }
+
+        return null;
+    }
+
+    private TypeNode checkFieldAccess(FieldAccess node) {
+        TypeNode objType = checkNode(node.object);
+
+        if (!(objType instanceof CollectionType)) {
+            throwError("TypeError: Field access is only supported on collection types.");
+        }
+
+        CollectionDefinition collectionDef = symbolTable.lookupCollection(((CollectionType) objType).name.name); // throws TypeError if collection not found
+        String fieldName = node.field.name;
+
+        for (FieldDeclaration field : collectionDef.fields) {
+            if (field.name.name.equals(fieldName)) {
+                return field.type;
+            }
+        }
+
+        throwError("TypeError: Field '" + fieldName + "' does not exist in collection '" + ((CollectionType) objType).name.name + "'.");        
+        return null;
+    }
+
+    private TypeNode checkArrayCreation(ArrayCreation node) {
+        TypeNode sizeType = checkNode(node.size);
+
+        if (!sizeType.equals(new BaseType("INT"))) {
+            throwError("TypeError: Array size must be of type INT, got '" + sizeType + "'.");
+        }
+
+        // if the element type is a collection, check if it exists
+        if (node.baseType instanceof CollectionType) {
+            String collectionName = ((CollectionType) node.baseType).name.name;
+            symbolTable.lookupCollection(collectionName);
+        }
+
+        return new ArrayType(node.baseType);
+    }
+
+    private TypeNode checkCollectionInstantiation(CollectionInstantiation node) {
+        CollectionDefinition collectionDef = symbolTable.lookupCollection(node.name.name); // throws TypeError if collection not found
+
+        if (node.elements.size() != collectionDef.fields.size()) {
+            throwError("ArgumentError: Collection '" + collectionDef.name.name + "' expects " + collectionDef.fields.size() + " field values, got " + node.elements.size());
+        }
+
+        // check that each element type matches the corresponding field type
+        for (int i = 0; i < node.elements.size(); i++) {
+            TypeNode valueType = checkNode(node.elements.get(i));
+            TypeNode fieldType = collectionDef.fields.get(i).type;
+
+            boolean isIntToFloat = fieldType.equals(new BaseType("FLOAT")) && valueType.equals(new BaseType("INT"));
+
+            if (!fieldType.equals(valueType) && !isIntToFloat) {
+                throwError("ArgumentError: Type mismatch in collection instantiation for field '" + collectionDef.fields.get(i).name.name + "'. Expected " + fieldType + " but got " + valueType);           
+            }
+        }
+
+        return new CollectionType(new Identifier(node.name.name));
     }
 }
