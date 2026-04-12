@@ -10,10 +10,21 @@ import compiler.AST.declarations.FunctionDefinition;
 import compiler.AST.types.TypeNode;
 
 public class SymbolTable {
+
+    // Intern class to store metadata of symbols
+    public class SymbolInfo {
+        public final TypeNode type;
+        public final boolean isConstant;
+
+        public SymbolInfo(TypeNode type, boolean isConstant) {
+            this.type = type;
+            this.isConstant = isConstant;
+        }
+    }
     
     // Stack of dictionaries to represent scopes
     // bottom of the stack is the global scope, top is the current (local) scope
-    private final Deque<Map<String, TypeNode>> scopes;
+    private final Deque<Map<String, SymbolInfo>> scopes;
 
     // Dictionary to store function signatures (name -> function definition)
     private final Map<String, FunctionDefinition> functions;
@@ -50,14 +61,14 @@ public class SymbolTable {
      * Declares a new variable in the current scope.
      * Throws an exception if the variable is already defined in the current scope.
      */
-    public void declareVariable(String name, TypeNode type) {
-        Map<String, TypeNode> currentScope = scopes.peek();
+    public void declareVariable(String name, TypeNode type, boolean isConstant) {
+        Map<String, SymbolInfo> currentScope = scopes.peek();
 
         // check if the variable is already declared in the current scope
         if (currentScope.containsKey(name)) {
             throwError("ScopeError: Variable '" + name + "' is already declared in the current scope.");
         }
-        currentScope.put(name, type);
+        currentScope.put(name, new SymbolInfo(type, isConstant));
     }
 
     /*
@@ -66,13 +77,27 @@ public class SymbolTable {
      */
     public TypeNode lookupVariable(String name) {
         // stack traversal: check the current scope first, then move outward to parent scopes
-        for (Map<String, TypeNode> scope : scopes) {
+        for (Map<String, SymbolInfo> scope : scopes) {
             if (scope.containsKey(name)) {
-                return scope.get(name);
+                return scope.get(name).type;
             }
         }
         throwError("ScopeError: Variable '" + name + "' is not declared in any accessible scope.");
         return null; // variable not found in any scope
+    }
+
+    /*
+     * Checks if a variable is declared as constant.
+     * Returns true if the variable is constant, false otherwise.
+     */
+    public boolean isConstant(String name) {
+        for (Map<String, SymbolInfo> scope : scopes) {
+            if (scope.containsKey(name)) {
+                return scope.get(name).isConstant;
+            }
+        }
+        throwError("ScopeError: Variable '" + name + "' is not declared in any accessible scope.");
+        return false; // variable not found in any scope
     }
 
     /*

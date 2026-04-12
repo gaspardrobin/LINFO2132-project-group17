@@ -83,6 +83,17 @@ public class SemanticAnalyzer {
      * Entry point of the semantic analysis.
      */
     public void analyze(Program program) {
+        // First pass : saving global declarations
+        // this allows forward references
+        for (ASTNode node : program.declarations) {
+            if (node instanceof FunctionDefinition) {
+                symbolTable.declareFunction((FunctionDefinition) node);
+            } else if (node instanceof CollectionDefinition) {
+                symbolTable.declareCollection((CollectionDefinition) node);
+            }
+        }
+
+        // Second pass : checking the whole program
         for (ASTNode node : program.declarations) {
             checkNode(node);
         }
