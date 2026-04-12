@@ -8,8 +8,8 @@ import compiler.AST.types.TypeNode;
 
 // Represents a parameter in a function declaration (e.g. : INT x)
 public class Parameter extends ASTNode {
-    private final TypeNode type;
-    private final Identifier name;
+    public final TypeNode type;
+    public final Identifier name;
 
     public Parameter(TypeNode type, Identifier name) {
         this.type = type;
