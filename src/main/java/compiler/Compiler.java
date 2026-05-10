@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.Reader;
 
 import compiler.AST.Program;
+import compiler.CodeGen.CodeGenerator;
 import compiler.Lexer.Lexer;
 import compiler.Lexer.Symbol;
 import compiler.Parser.Parser;
@@ -80,8 +81,8 @@ public class Compiler {
                 analyzer.analyze(ast);
 
                 // TODO: Implement code generation and write to targetFile
-                // CodeGenerator generator = new CodeGenerator(targetFile);
-                // generator.generate(ast);
+                CodeGenerator generator = new CodeGenerator(targetFile);
+                generator.generate(ast);
                 System.out.println("Code generation completed successfully. Output file: " + targetFile);
                 return;
             }
