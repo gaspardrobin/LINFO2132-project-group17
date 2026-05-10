@@ -17,7 +17,6 @@ import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
 import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
-import static org.objectweb.asm.Opcodes.POP;
 import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.V1_8;
 
@@ -82,6 +81,8 @@ public class CodeGenerator {
         if (funcName.equals("main")) {
             mv = cw.visitMethod(ACC_PUBLIC + ACC_STATIC, "main", "([Ljava/lang/String;)V", null, null);
             slotManager = new SlotManager(true); // main is static
+
+            slotManager.declareVariable("args"); // reserve slot for String[] args
         } else {
             return; // for now, we only generate main
         }
@@ -157,7 +158,6 @@ public class CodeGenerator {
 
     private void visitExpressionStatement(ExpressionStatement node) {
         visit(node.expression);
-        mv.visitInsn(POP); // discard the result of the expression
     }
 
     private void visitBlock(Block node) {
