@@ -13,6 +13,7 @@ import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ALOAD;
 import static org.objectweb.asm.Opcodes.ANEWARRAY;
 import static org.objectweb.asm.Opcodes.ASTORE;
+import static org.objectweb.asm.Opcodes.DUP;
 import static org.objectweb.asm.Opcodes.FADD;
 import static org.objectweb.asm.Opcodes.FALOAD;
 import static org.objectweb.asm.Opcodes.FASTORE;
@@ -23,6 +24,7 @@ import static org.objectweb.asm.Opcodes.FMUL;
 import static org.objectweb.asm.Opcodes.FRETURN;
 import static org.objectweb.asm.Opcodes.FSTORE;
 import static org.objectweb.asm.Opcodes.FSUB;
+import static org.objectweb.asm.Opcodes.GETFIELD;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
 import static org.objectweb.asm.Opcodes.GOTO;
 import static org.objectweb.asm.Opcodes.IADD;
@@ -53,7 +55,9 @@ import static org.objectweb.asm.Opcodes.IOR;
 import static org.objectweb.asm.Opcodes.IRETURN;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
+import static org.objectweb.asm.Opcodes.NEW;
 import static org.objectweb.asm.Opcodes.NEWARRAY;
+import static org.objectweb.asm.Opcodes.PUTFIELD;
 import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.T_BOOLEAN;
 import static org.objectweb.asm.Opcodes.T_FLOAT;
@@ -62,12 +66,16 @@ import static org.objectweb.asm.Opcodes.V1_8;
 
 import compiler.AST.ASTNode;
 import compiler.AST.Program;
+import compiler.AST.declarations.CollectionDefinition;
+import compiler.AST.declarations.FieldDeclaration;
 import compiler.AST.declarations.FunctionDefinition;
 import compiler.AST.expressions.ArrayAccess;
 import compiler.AST.expressions.ArrayCreation;
 import compiler.AST.expressions.BinaryExpression;
 import compiler.AST.expressions.BooleanLiteral;
+import compiler.AST.expressions.CollectionInstantiation;
 import compiler.AST.expressions.Expression;
+import compiler.AST.expressions.FieldAccess;
 import compiler.AST.expressions.FloatLiteral;
 import compiler.AST.expressions.FunctionCall;
 import compiler.AST.expressions.Identifier;
@@ -106,8 +114,10 @@ public class CodeGenerator {
         for (var node : program.declarations) {
             if (node instanceof FunctionDefinition) {
                 generateFunction((FunctionDefinition) node);
+            } else if (node instanceof CollectionDefinition) {
+                generateCollection((CollectionDefinition) node);
             }
-            // TODO: handle global variables and other declarations
+            // TODO: handle global variables
         }
 
         cw.visitEnd();
@@ -167,6 +177,55 @@ public class CodeGenerator {
         mv.visitEnd();
     }
 
+    private void generateCollection(CollectionDefinition node) {String collName = node.name.name;
+        // New independent ClassWriter for the collection class
+        ClassWriter collCw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        collCw.visit(V1_8, ACC_PUBLIC, collName, null, "java/lang/Object", null);
+
+        // Handle class fields
+        StringBuilder sigBuilder = new StringBuilder("(");
+        for (FieldDeclaration f : node.fields) {
+            String desc = getTypeDescriptor(f.type);
+            collCw.visitField(ACC_PUBLIC, f.name.name, desc, null, null).visitEnd();
+            sigBuilder.append(desc);
+        }
+        sigBuilder.append(")V");
+        String constructorSignature = sigBuilder.toString(); // ex: "(II)V" for Point(x, y)
+
+        // Generate constructor
+        MethodVisitor mvInit = collCw.visitMethod(ACC_PUBLIC, "<init>", constructorSignature, null, null);
+        mvInit.visitCode();
+        mvInit.visitVarInsn(ALOAD, 0); // "this"
+        mvInit.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+        
+        // 3. Assign the received parameters to the corresponding fields
+        int slot = 1; // slot 0 is "this", slot 1 is the first argument
+        for (FieldDeclaration f : node.fields) {
+            mvInit.visitVarInsn(ALOAD, 0); // Push "this"
+            
+            String desc = getTypeDescriptor(f.type);
+            if (desc.equals("F")) mvInit.visitVarInsn(FLOAD, slot);
+            else if (desc.equals("I") || desc.equals("Z")) mvInit.visitVarInsn(ILOAD, slot);
+            else mvInit.visitVarInsn(ALOAD, slot); 
+            
+            // this.field = argument
+            mvInit.visitFieldInsn(PUTFIELD, collName, f.name.name, desc);
+            slot++;
+        }
+        
+        mvInit.visitInsn(RETURN);
+        mvInit.visitMaxs(0, 0);
+        mvInit.visitEnd();
+        collCw.visitEnd();
+
+        // Write the physical file (e.g., Point.class)
+        try (FileOutputStream fos = new FileOutputStream(new File(collName + ".class"))) {
+            fos.write(collCw.toByteArray());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     // Translates a TypeNode of the AST into a JVM type descriptor string
     private String getTypeDescriptor(TypeNode type) {
         if (type == null) return "V"; // void
@@ -205,6 +264,8 @@ public class CodeGenerator {
         else if (node instanceof ReturnStatement) visitReturnStatement((ReturnStatement) node);
         else if (node instanceof ArrayCreation) visitArrayCreation((ArrayCreation) node);
         else if (node instanceof ArrayAccess) visitArrayAccess((ArrayAccess) node);
+        else if (node instanceof CollectionInstantiation) visitCollectionInstantiation((CollectionInstantiation) node);
+        else if (node instanceof FieldAccess) visitFieldAccess((FieldAccess) node);
         // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
@@ -415,8 +476,16 @@ public class CodeGenerator {
             } else {
                 mv.visitInsn(AASTORE);
             }
+        } else if (node.lhs instanceof FieldAccess) {
+            FieldAccess fa = (FieldAccess) node.lhs;
+            visit(fa.object); 
+            visit(node.rhs);
+            
+            String collName = ((compiler.AST.types.CollectionType) fa.object.type).name.name;
+            String desc = getTypeDescriptor(node.rhs.type);
+            
+            mv.visitFieldInsn(PUTFIELD, collName, fa.field.name, desc);
         }
-        // TODO: handle FieldAccess for objects
     }
 
     private void visitReturnStatement(ReturnStatement node) {
@@ -463,5 +532,31 @@ public class CodeGenerator {
         } else if (node.type instanceof CollectionType) {
             mv.visitInsn(AALOAD);
         }
+    }
+
+    private void visitCollectionInstantiation(CollectionInstantiation node) {
+        String collName = node.name.name;
+        
+        mv.visitTypeInsn(NEW, collName);
+        mv.visitInsn(DUP);
+        
+        // Stacks all the arguments
+        StringBuilder sigBuilder = new StringBuilder("(");
+        for (compiler.AST.expressions.Expression arg : node.elements) {
+            visit(arg);
+            sigBuilder.append(getTypeDescriptor(arg.type));
+        }
+        sigBuilder.append(")V");
+        
+        mv.visitMethodInsn(INVOKESPECIAL, collName, "<init>", sigBuilder.toString(), false);
+    }
+
+    private void visitFieldAccess(FieldAccess node) {
+        visit(node.object); 
+        
+        String collName = ((compiler.AST.types.CollectionType) node.object.type).name.name;
+        String desc = getTypeDescriptor(node.type);
+        
+        mv.visitFieldInsn(GETFIELD, collName, node.field.name, desc);
     }
 }

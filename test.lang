@@ -1,13 +1,13 @@
+coll Point {
+    INT x;
+    INT y;
+}
+
 def main() {
-    INT[] notes = INT ARRAY [3];
+    Point p = Point(10, 20);
 
-    notes[0] = 10;
-    notes[1] = 15;
-    notes[2] = 20;
+    println(p.x); # Expected : 10
 
-    notes[2] = notes[2] + 2;
-
-    # Expected : 15 then 22
-    println(notes[1]);
-    println(notes[2]);
+    p.y = p.y + 5;
+    println(p.y); # Expected : 25
 }
