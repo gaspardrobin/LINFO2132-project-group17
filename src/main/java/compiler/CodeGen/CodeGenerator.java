@@ -14,6 +14,7 @@ import static org.objectweb.asm.Opcodes.FCMPG;
 import static org.objectweb.asm.Opcodes.FDIV;
 import static org.objectweb.asm.Opcodes.FLOAD;
 import static org.objectweb.asm.Opcodes.FMUL;
+import static org.objectweb.asm.Opcodes.FRETURN;
 import static org.objectweb.asm.Opcodes.FSTORE;
 import static org.objectweb.asm.Opcodes.FSUB;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
@@ -38,8 +39,10 @@ import static org.objectweb.asm.Opcodes.IF_ICMPNE;
 import static org.objectweb.asm.Opcodes.ILOAD;
 import static org.objectweb.asm.Opcodes.IMUL;
 import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
+import static org.objectweb.asm.Opcodes.INVOKESTATIC;
 import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
 import static org.objectweb.asm.Opcodes.IOR;
+import static org.objectweb.asm.Opcodes.IRETURN;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
 import static org.objectweb.asm.Opcodes.RETURN;
@@ -50,6 +53,7 @@ import compiler.AST.Program;
 import compiler.AST.declarations.FunctionDefinition;
 import compiler.AST.expressions.BinaryExpression;
 import compiler.AST.expressions.BooleanLiteral;
+import compiler.AST.expressions.Expression;
 import compiler.AST.expressions.FloatLiteral;
 import compiler.AST.expressions.FunctionCall;
 import compiler.AST.expressions.Identifier;
@@ -59,9 +63,11 @@ import compiler.AST.statements.Assignment;
 import compiler.AST.statements.Block;
 import compiler.AST.statements.ExpressionStatement;
 import compiler.AST.statements.IfStatement;
+import compiler.AST.statements.ReturnStatement;
 import compiler.AST.statements.VariableDeclaration;
 import compiler.AST.statements.WhileStatement;
 import compiler.AST.types.BaseType;
+import compiler.AST.types.TypeNode;
 
 public class CodeGenerator {
     private String targetFile;
@@ -107,25 +113,59 @@ public class CodeGenerator {
         constructor.visitEnd();
     }
     
-    private void generateFunction(FunctionDefinition node) {
-        String funcName = node.name.name;
+    private void generateFunction(FunctionDefinition node) {String funcName = node.name.name;
+        String signature;
 
         if (funcName.equals("main")) {
-            mv = cw.visitMethod(ACC_PUBLIC + ACC_STATIC, "main", "([Ljava/lang/String;)V", null, null);
-            slotManager = new SlotManager(true); // main is static
-
-            slotManager.declareVariable("args"); // reserve slot for String[] args
+            signature = "([Ljava/lang/String;)V";
+            mv = cw.visitMethod(ACC_PUBLIC + ACC_STATIC, "main", signature, null, null);
+            slotManager = new SlotManager(true);
+            slotManager.declareVariable("args"); 
         } else {
-            return; // for now, we only generate main
+            // Build signature ex: (IF)I for a function that takes an int and a float and returns an int
+            StringBuilder sigBuilder = new StringBuilder("(");
+            for (compiler.AST.declarations.Parameter p : node.parameters) {
+                sigBuilder.append(getTypeDescriptor(p.type));
+            }
+            sigBuilder.append(")");
+            sigBuilder.append(getTypeDescriptor(node.returnType));
+            signature = sigBuilder.toString();
+
+            mv = cw.visitMethod(ACC_PUBLIC + ACC_STATIC, funcName, signature, null, null);
+            slotManager = new SlotManager(true);
+            
+            for (compiler.AST.declarations.Parameter p : node.parameters) {
+                slotManager.declareVariable(p.name.name);
+            }
         }
 
         mv.visitCode();
-
         visit(node.body);
 
-        mv.visitInsn(RETURN); // void method must end with a return
-        mv.visitMaxs(0, 0); // let ASM compute stack and local variable
+        // Add RETURN only if the function is void or main (which is always void). For non-void functions, we expect a return statement to provide the return value.
+        if (funcName.equals("main") || (node.returnType != null && ((compiler.AST.types.BaseType)node.returnType).name.equals("VOID"))) {
+            mv.visitInsn(RETURN); 
+        }
+        
+        mv.visitMaxs(0, 0); 
         mv.visitEnd();
+    }
+
+    // Translates a TypeNode of the AST into a JVM type descriptor string
+    private String getTypeDescriptor(TypeNode type) {
+        if (type == null) return "V"; // void
+
+        if (type instanceof BaseType) {
+            String name = ((BaseType) type).name;
+            switch (name) {
+                case "INT": return "I";
+                case "FLOAT": return "F";
+                case "BOOL": return "Z";
+                case "STRING": return "Ljava/lang/String;";
+                case "VOID": return "V";
+            }
+        }
+        return "V"; // default to void for unknown types (should not happen if semantic analysis is correct)
     }
 
     private void visit(ASTNode node) {
@@ -142,6 +182,7 @@ public class CodeGenerator {
         else if (node instanceof BooleanLiteral) visitBooleanLiteral((BooleanLiteral) node);
         else if (node instanceof StringLiteral) visitStringLiteral((StringLiteral) node);
         else if (node instanceof Assignment) visitAssignment((Assignment) node);
+        else if (node instanceof ReturnStatement) visitReturnStatement((ReturnStatement) node);
         // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
@@ -237,6 +278,8 @@ public class CodeGenerator {
     }
 
     private void visitFunctionCall(FunctionCall node) {
+        String funcName = node.functionName.name;
+        
         if (node.functionName.name.equals("print") || node.functionName.name.equals("println")) {
             mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
             visit(node.arguments.get(0));
@@ -250,6 +293,16 @@ public class CodeGenerator {
             
             String methodName = node.functionName.name.equals("println") ? "println" : "print";
             mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", methodName, signature, false);
+        } else {
+            // Custom functions call
+            StringBuilder sb = new StringBuilder("(");
+            for (Expression arg : node.arguments) {
+                visit(arg);
+                sb.append(getTypeDescriptor(arg.type));
+            }
+            sb.append(")");
+            sb.append(getTypeDescriptor(node.type)); // return type
+            mv.visitMethodInsn(INVOKESTATIC, className, funcName, sb.toString(), false);
         }
     }
 
@@ -317,5 +370,18 @@ public class CodeGenerator {
             }
         }
         // TODO : handle array assignment, object field assignment, etc.
+    }
+
+    private void visitReturnStatement(ReturnStatement node) {
+        if (node.returnValue != null) {
+            visit(node.returnValue);
+            if (node.returnValue.type instanceof BaseType && ((BaseType) node.returnValue.type).name.equals("FLOAT")) {
+                mv.visitInsn(FRETURN);
+            } else {
+                mv.visitInsn(IRETURN);
+            }
+        } else {
+            mv.visitInsn(RETURN);
+        }
     }
 }

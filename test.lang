@@ -1,27 +1,15 @@
+def INT add(INT a, INT b) {
+    return a + b;
+}
+
+def INT fibonacci(INT n) {
+    if (n <= 1) {
+        return n;
+    } else {
+        return add(fibonacci(n - 1), fibonacci(n - 2));
+    }
+}
+
 def main() {
-    INT a = 10;
-    INT b = 3;
-    println(a + b);       # Expected : 13
-
-    FLOAT pi = 3.14;
-    FLOAT radius = 2.0;
-    println(pi * radius); # Expected : 6.28
-
-    if (a > b && radius <= 3.0) {
-        println(1);       # Expected : 1 (if is true)
-    } else {
-        println(0);
-    }
-
-    INT counter = 0;
-    while (counter < 5) {
-        counter = counter + 1;
-    }
-    println(counter);     # Expected : 5
-
-    if (pi > 4.0) {
-        println(99);      # should not appear
-    } else {
-        println(88);      # Expected : 88
-    }
+    println(fibonacci(7)); # Expected : 13
 }
