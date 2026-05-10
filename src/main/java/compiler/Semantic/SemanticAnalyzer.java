@@ -153,19 +153,25 @@ public class SemanticAnalyzer {
         if (node instanceof ExpressionStatement) return checkExpressionStatement((ExpressionStatement) node);
 
         // Expressions
-        if (node instanceof IntegerLiteral) return new BaseType("INT");
-        if (node instanceof StringLiteral) return new BaseType("STRING");
-        if (node instanceof BooleanLiteral) return new BaseType("BOOL");
-        if (node instanceof FloatLiteral) return new BaseType("FLOAT");
-        if (node instanceof Identifier) return symbolTable.lookupVariable(((Identifier) node).name);
+        TypeNode resultType = null;
 
-        if (node instanceof BinaryExpression) return checkBinaryExpression((BinaryExpression) node);
-        if (node instanceof UnaryExpression) return checkUnaryExpression((UnaryExpression) node);
-        if (node instanceof FunctionCall) return checkFunctionCall((FunctionCall) node);
-        if (node instanceof ArrayAccess) return checkArrayAccess((ArrayAccess) node);
-        if (node instanceof FieldAccess) return checkFieldAccess((FieldAccess) node);
-        if (node instanceof ArrayCreation) return checkArrayCreation((ArrayCreation) node);
-        if (node instanceof CollectionInstantiation) return checkCollectionInstantiation((CollectionInstantiation) node);
+        if (node instanceof IntegerLiteral) resultType =  new BaseType("INT");
+        else if (node instanceof StringLiteral) resultType = new BaseType("STRING");
+        else if (node instanceof BooleanLiteral) resultType = new BaseType("BOOL");
+        else if (node instanceof FloatLiteral) resultType = new BaseType("FLOAT");
+        else if (node instanceof Identifier) resultType = symbolTable.lookupVariable(((Identifier) node).name);
+        else if (node instanceof BinaryExpression) resultType = checkBinaryExpression((BinaryExpression) node);
+        else if (node instanceof UnaryExpression) resultType = checkUnaryExpression((UnaryExpression) node);
+        else if (node instanceof FunctionCall) resultType = checkFunctionCall((FunctionCall) node);
+        else if (node instanceof ArrayAccess) resultType = checkArrayAccess((ArrayAccess) node);
+        else if (node instanceof FieldAccess) resultType = checkFieldAccess((FieldAccess) node);
+        else if (node instanceof ArrayCreation) resultType = checkArrayCreation((ArrayCreation) node);
+        else if (node instanceof CollectionInstantiation) resultType = checkCollectionInstantiation((CollectionInstantiation) node);
+
+        if (resultType != null && node instanceof Expression) {
+            ((Expression) node).type = resultType; // save the expression type for code generation
+            return resultType;
+        }
 
         throw new RuntimeException("Internal compiler error: Unhandled AST node type: " + node.getClass().getSimpleName());
     }

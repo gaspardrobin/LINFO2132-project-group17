@@ -8,6 +8,12 @@ import org.objectweb.asm.MethodVisitor;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ALOAD;
+import static org.objectweb.asm.Opcodes.FADD;
+import static org.objectweb.asm.Opcodes.FDIV;
+import static org.objectweb.asm.Opcodes.FLOAD;
+import static org.objectweb.asm.Opcodes.FMUL;
+import static org.objectweb.asm.Opcodes.FSTORE;
+import static org.objectweb.asm.Opcodes.FSUB;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
 import static org.objectweb.asm.Opcodes.IADD;
 import static org.objectweb.asm.Opcodes.IDIV;
@@ -30,6 +36,7 @@ import compiler.AST.expressions.IntegerLiteral;
 import compiler.AST.statements.Block;
 import compiler.AST.statements.ExpressionStatement;
 import compiler.AST.statements.VariableDeclaration;
+import compiler.AST.types.BaseType;
 
 public class CodeGenerator {
     private String targetFile;
@@ -116,19 +123,13 @@ public class CodeGenerator {
         visit(node.left);
         visit(node.right);
 
+        boolean isFloat = node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT");
+
         switch (node.operator) {
-            case "+":
-                mv.visitInsn(IADD);
-                break;
-            case "-":
-                mv.visitInsn(ISUB);
-                break;
-            case "*":
-                mv.visitInsn(IMUL);
-                break;
-            case "/":
-                mv.visitInsn(IDIV);
-                break;
+            case "+": mv.visitInsn(isFloat ? FADD : IADD); break;
+            case "-": mv.visitInsn(isFloat ? FSUB : ISUB); break;
+            case "*": mv.visitInsn(isFloat ? FMUL : IMUL); break;
+            case "/": mv.visitInsn(isFloat ? FDIV : IDIV); break;
         }
     }
 
@@ -136,7 +137,12 @@ public class CodeGenerator {
         if (node.initializer != null) {
             visit(node.initializer);
             int slot = slotManager.declareVariable(node.identifier.name);
-            mv.visitVarInsn(ISTORE, slot);
+
+            if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
+                mv.visitVarInsn(FSTORE, slot);
+            } else {
+                mv.visitVarInsn(ISTORE, slot);
+            }
         } else {
             slotManager.declareVariable(node.identifier.name);
         }
@@ -144,15 +150,20 @@ public class CodeGenerator {
 
     private void visitIdentifier(Identifier node) {
         int slot = slotManager.getSlot(node.name);
-        mv.visitVarInsn(ILOAD, slot);
+        if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
+            mv.visitVarInsn(FLOAD, slot);
+        } else {
+            mv.visitVarInsn(ILOAD, slot);
+        }
     }
 
     private void visitFunctionCall(FunctionCall node) {
-        // For now, we only support calling "print" which maps to System.out.println
-        if (node.functionName.name.equals("print")) {
+        if (node.functionName.name.equals("print") || node.functionName.name.equals("println")) {
             mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
-            visit(node.arguments.get(0)); // assume one argument for print
-            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(I)V", false);
+            visit(node.arguments.get(0));
+            
+            String methodName = node.functionName.name.equals("println") ? "println" : "print";
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", methodName, "(I)V", false);
         }
     }
 
