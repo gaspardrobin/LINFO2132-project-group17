@@ -6,10 +6,16 @@ import java.io.FileOutputStream;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
+import static org.objectweb.asm.Opcodes.AALOAD;
+import static org.objectweb.asm.Opcodes.AASTORE;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ALOAD;
+import static org.objectweb.asm.Opcodes.ANEWARRAY;
+import static org.objectweb.asm.Opcodes.ASTORE;
 import static org.objectweb.asm.Opcodes.FADD;
+import static org.objectweb.asm.Opcodes.FALOAD;
+import static org.objectweb.asm.Opcodes.FASTORE;
 import static org.objectweb.asm.Opcodes.FCMPG;
 import static org.objectweb.asm.Opcodes.FDIV;
 import static org.objectweb.asm.Opcodes.FLOAD;
@@ -20,7 +26,9 @@ import static org.objectweb.asm.Opcodes.FSUB;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
 import static org.objectweb.asm.Opcodes.GOTO;
 import static org.objectweb.asm.Opcodes.IADD;
+import static org.objectweb.asm.Opcodes.IALOAD;
 import static org.objectweb.asm.Opcodes.IAND;
+import static org.objectweb.asm.Opcodes.IASTORE;
 import static org.objectweb.asm.Opcodes.ICONST_0;
 import static org.objectweb.asm.Opcodes.ICONST_1;
 import static org.objectweb.asm.Opcodes.IDIV;
@@ -45,12 +53,18 @@ import static org.objectweb.asm.Opcodes.IOR;
 import static org.objectweb.asm.Opcodes.IRETURN;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
+import static org.objectweb.asm.Opcodes.NEWARRAY;
 import static org.objectweb.asm.Opcodes.RETURN;
+import static org.objectweb.asm.Opcodes.T_BOOLEAN;
+import static org.objectweb.asm.Opcodes.T_FLOAT;
+import static org.objectweb.asm.Opcodes.T_INT;
 import static org.objectweb.asm.Opcodes.V1_8;
 
 import compiler.AST.ASTNode;
 import compiler.AST.Program;
 import compiler.AST.declarations.FunctionDefinition;
+import compiler.AST.expressions.ArrayAccess;
+import compiler.AST.expressions.ArrayCreation;
 import compiler.AST.expressions.BinaryExpression;
 import compiler.AST.expressions.BooleanLiteral;
 import compiler.AST.expressions.Expression;
@@ -66,7 +80,9 @@ import compiler.AST.statements.IfStatement;
 import compiler.AST.statements.ReturnStatement;
 import compiler.AST.statements.VariableDeclaration;
 import compiler.AST.statements.WhileStatement;
+import compiler.AST.types.ArrayType;
 import compiler.AST.types.BaseType;
+import compiler.AST.types.CollectionType;
 import compiler.AST.types.TypeNode;
 
 public class CodeGenerator {
@@ -164,6 +180,10 @@ public class CodeGenerator {
                 case "STRING": return "Ljava/lang/String;";
                 case "VOID": return "V";
             }
+        } else if (type instanceof ArrayType) {
+            return "[" + getTypeDescriptor(((ArrayType) type).elementType);
+        } else if (type instanceof CollectionType) {
+            return "L" + ((CollectionType) type).name.name + ";";
         }
         return "V"; // default to void for unknown types (should not happen if semantic analysis is correct)
     }
@@ -183,6 +203,8 @@ public class CodeGenerator {
         else if (node instanceof StringLiteral) visitStringLiteral((StringLiteral) node);
         else if (node instanceof Assignment) visitAssignment((Assignment) node);
         else if (node instanceof ReturnStatement) visitReturnStatement((ReturnStatement) node);
+        else if (node instanceof ArrayCreation) visitArrayCreation((ArrayCreation) node);
+        else if (node instanceof ArrayAccess) visitArrayAccess((ArrayAccess) node);
         // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
@@ -260,6 +282,10 @@ public class CodeGenerator {
 
             if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
                 mv.visitVarInsn(FSTORE, slot);
+            } else if (node.type instanceof compiler.AST.types.ArrayType || 
+                       node.type instanceof compiler.AST.types.CollectionType || 
+                       (node.type instanceof BaseType && ((BaseType) node.type).name.equals("STRING"))) {
+                mv.visitVarInsn(ASTORE, slot);
             } else {
                 mv.visitVarInsn(ISTORE, slot);
             }
@@ -272,6 +298,10 @@ public class CodeGenerator {
         int slot = slotManager.getSlot(node.name);
         if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
             mv.visitVarInsn(FLOAD, slot);
+        } else if (node.type instanceof compiler.AST.types.ArrayType || 
+                   node.type instanceof compiler.AST.types.CollectionType || 
+                   (node.type instanceof BaseType && ((BaseType) node.type).name.equals("STRING"))) {
+            mv.visitVarInsn(ALOAD, slot);
         } else {
             mv.visitVarInsn(ILOAD, slot);
         }
@@ -358,18 +388,35 @@ public class CodeGenerator {
     }
 
     private void visitAssignment(Assignment node) {
-        visit(node.rhs);
-        
         if (node.lhs instanceof Identifier) {
+            visit(node.rhs);
             int slot = slotManager.getSlot(((Identifier) node.lhs).name);
-            
             if (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("FLOAT")) {
                 mv.visitVarInsn(FSTORE, slot);
+            } else if (node.lhs.type instanceof ArrayType || node.lhs.type instanceof CollectionType || 
+                      (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("STRING"))) {
+                mv.visitVarInsn(org.objectweb.asm.Opcodes.ASTORE, slot);
             } else {
                 mv.visitVarInsn(ISTORE, slot);
             }
+            
+        } else if (node.lhs instanceof ArrayAccess) {
+            ArrayAccess aa = (ArrayAccess) node.lhs;
+            
+            visit(aa.array);
+            visit(aa.index);
+            visit(node.rhs);
+            
+            if (node.rhs.type instanceof BaseType) {
+                String name = ((BaseType) node.rhs.type).name;
+                if (name.equals("FLOAT")) mv.visitInsn(FASTORE);
+                else if (name.equals("STRING")) mv.visitInsn(AASTORE);
+                else mv.visitInsn(IASTORE);
+            } else {
+                mv.visitInsn(AASTORE);
+            }
         }
-        // TODO : handle array assignment, object field assignment, etc.
+        // TODO: handle FieldAccess for objects
     }
 
     private void visitReturnStatement(ReturnStatement node) {
@@ -382,6 +429,39 @@ public class CodeGenerator {
             }
         } else {
             mv.visitInsn(RETURN);
+        }
+    }
+
+    private void visitArrayCreation(ArrayCreation node) {
+        visit(node.size); 
+        
+        if (node.baseType instanceof BaseType) {
+            String name = ((BaseType) node.baseType).name;
+            switch (name) {
+                case "INT": mv.visitIntInsn(NEWARRAY, T_INT); break;
+                case "FLOAT": mv.visitIntInsn(NEWARRAY, T_FLOAT); break;
+                case "BOOL": mv.visitIntInsn(NEWARRAY, T_BOOLEAN); break;
+                case "STRING": mv.visitTypeInsn(ANEWARRAY, "java/lang/String"); break;
+            }
+        } else if (node.baseType instanceof CollectionType) {
+            mv.visitTypeInsn(ANEWARRAY, ((CollectionType) node.baseType).name.name);
+        }
+    }
+
+    private void visitArrayAccess(ArrayAccess node) {
+        visit(node.array);
+        visit(node.index);
+
+        if (node.type instanceof BaseType) {
+            String name = ((BaseType) node.type).name;
+            switch (name) {
+                case "INT": mv.visitInsn(IALOAD); break;
+                case "FLOAT": mv.visitInsn(FALOAD); break;
+                case "BOOL": mv.visitInsn(IALOAD); break;
+                case "STRING": mv.visitInsn(AALOAD); break;
+            }
+        } else if (node.type instanceof CollectionType) {
+            mv.visitInsn(AALOAD);
         }
     }
 }

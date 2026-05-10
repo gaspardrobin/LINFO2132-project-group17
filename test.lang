@@ -1,15 +1,13 @@
-def INT add(INT a, INT b) {
-    return a + b;
-}
-
-def INT fibonacci(INT n) {
-    if (n <= 1) {
-        return n;
-    } else {
-        return add(fibonacci(n - 1), fibonacci(n - 2));
-    }
-}
-
 def main() {
-    println(fibonacci(7)); # Expected : 13
+    INT[] notes = INT ARRAY [3];
+
+    notes[0] = 10;
+    notes[1] = 15;
+    notes[2] = 20;
+
+    notes[2] = notes[2] + 2;
+
+    # Expected : 15 then 22
+    println(notes[1]);
+    println(notes[2]);
 }
