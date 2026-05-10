@@ -49,9 +49,13 @@ import compiler.AST.ASTNode;
 import compiler.AST.Program;
 import compiler.AST.declarations.FunctionDefinition;
 import compiler.AST.expressions.BinaryExpression;
+import compiler.AST.expressions.BooleanLiteral;
+import compiler.AST.expressions.FloatLiteral;
 import compiler.AST.expressions.FunctionCall;
 import compiler.AST.expressions.Identifier;
 import compiler.AST.expressions.IntegerLiteral;
+import compiler.AST.expressions.StringLiteral;
+import compiler.AST.statements.Assignment;
 import compiler.AST.statements.Block;
 import compiler.AST.statements.ExpressionStatement;
 import compiler.AST.statements.IfStatement;
@@ -134,6 +138,10 @@ public class CodeGenerator {
         else if (node instanceof FunctionCall) visitFunctionCall((FunctionCall) node);
         else if (node instanceof IfStatement) visitIfStatement((IfStatement) node);
         else if (node instanceof WhileStatement) visitWhileStatement((WhileStatement) node);
+        else if (node instanceof FloatLiteral) visitFloatLiteral((FloatLiteral) node);
+        else if (node instanceof BooleanLiteral) visitBooleanLiteral((BooleanLiteral) node);
+        else if (node instanceof StringLiteral) visitStringLiteral((StringLiteral) node);
+        else if (node instanceof Assignment) visitAssignment((Assignment) node);
         // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
@@ -232,9 +240,16 @@ public class CodeGenerator {
         if (node.functionName.name.equals("print") || node.functionName.name.equals("println")) {
             mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
             visit(node.arguments.get(0));
+
+            String signature = "(I)V"; // Default (Integer)
+            if (node.arguments.get(0).type instanceof compiler.AST.types.BaseType) {
+                String typeName = ((compiler.AST.types.BaseType) node.arguments.get(0).type).name;
+                if (typeName.equals("FLOAT")) signature = "(F)V";
+                else if (typeName.equals("BOOL")) signature = "(Z)V"; // Z is the JVM descriptor for boolean
+            }
             
             String methodName = node.functionName.name.equals("println") ? "println" : "print";
-            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", methodName, "(I)V", false);
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", methodName, signature, false);
         }
     }
 
@@ -275,5 +290,32 @@ public class CodeGenerator {
         visit(node.body);
         mv.visitJumpInsn(GOTO, conditionLabel);
         mv.visitLabel(endLabel);
+    }
+
+    private void visitFloatLiteral(FloatLiteral node) {
+        mv.visitLdcInsn(node.value);
+    }
+
+    private void visitBooleanLiteral(BooleanLiteral node) {
+        mv.visitInsn(node.value ? ICONST_1 : ICONST_0);
+    }
+
+    private void visitStringLiteral(StringLiteral node) {
+        mv.visitLdcInsn(node.value);
+    }
+
+    private void visitAssignment(Assignment node) {
+        visit(node.rhs);
+        
+        if (node.lhs instanceof Identifier) {
+            int slot = slotManager.getSlot(((Identifier) node.lhs).name);
+            
+            if (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("FLOAT")) {
+                mv.visitVarInsn(FSTORE, slot);
+            } else {
+                mv.visitVarInsn(ISTORE, slot);
+            }
+        }
+        // TODO : handle array assignment, object field assignment, etc.
     }
 }
