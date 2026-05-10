@@ -4,23 +4,42 @@ import java.io.File;
 import java.io.FileOutputStream;
 
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ALOAD;
 import static org.objectweb.asm.Opcodes.FADD;
+import static org.objectweb.asm.Opcodes.FCMPG;
 import static org.objectweb.asm.Opcodes.FDIV;
 import static org.objectweb.asm.Opcodes.FLOAD;
 import static org.objectweb.asm.Opcodes.FMUL;
 import static org.objectweb.asm.Opcodes.FSTORE;
 import static org.objectweb.asm.Opcodes.FSUB;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
+import static org.objectweb.asm.Opcodes.GOTO;
 import static org.objectweb.asm.Opcodes.IADD;
+import static org.objectweb.asm.Opcodes.IAND;
+import static org.objectweb.asm.Opcodes.ICONST_0;
+import static org.objectweb.asm.Opcodes.ICONST_1;
 import static org.objectweb.asm.Opcodes.IDIV;
+import static org.objectweb.asm.Opcodes.IFEQ;
+import static org.objectweb.asm.Opcodes.IFGE;
+import static org.objectweb.asm.Opcodes.IFGT;
+import static org.objectweb.asm.Opcodes.IFLE;
+import static org.objectweb.asm.Opcodes.IFLT;
+import static org.objectweb.asm.Opcodes.IFNE;
+import static org.objectweb.asm.Opcodes.IF_ICMPEQ;
+import static org.objectweb.asm.Opcodes.IF_ICMPGE;
+import static org.objectweb.asm.Opcodes.IF_ICMPGT;
+import static org.objectweb.asm.Opcodes.IF_ICMPLE;
+import static org.objectweb.asm.Opcodes.IF_ICMPLT;
+import static org.objectweb.asm.Opcodes.IF_ICMPNE;
 import static org.objectweb.asm.Opcodes.ILOAD;
 import static org.objectweb.asm.Opcodes.IMUL;
 import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
 import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
+import static org.objectweb.asm.Opcodes.IOR;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
 import static org.objectweb.asm.Opcodes.RETURN;
@@ -35,7 +54,9 @@ import compiler.AST.expressions.Identifier;
 import compiler.AST.expressions.IntegerLiteral;
 import compiler.AST.statements.Block;
 import compiler.AST.statements.ExpressionStatement;
+import compiler.AST.statements.IfStatement;
 import compiler.AST.statements.VariableDeclaration;
+import compiler.AST.statements.WhileStatement;
 import compiler.AST.types.BaseType;
 
 public class CodeGenerator {
@@ -111,6 +132,8 @@ public class CodeGenerator {
         else if (node instanceof BinaryExpression) visitBinaryExpression((BinaryExpression) node);
         else if (node instanceof Identifier) visitIdentifier((Identifier) node);
         else if (node instanceof FunctionCall) visitFunctionCall((FunctionCall) node);
+        else if (node instanceof IfStatement) visitIfStatement((IfStatement) node);
+        else if (node instanceof WhileStatement) visitWhileStatement((WhileStatement) node);
         // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
@@ -130,6 +153,54 @@ public class CodeGenerator {
             case "-": mv.visitInsn(isFloat ? FSUB : ISUB); break;
             case "*": mv.visitInsn(isFloat ? FMUL : IMUL); break;
             case "/": mv.visitInsn(isFloat ? FDIV : IDIV); break;
+
+            case "&&": mv.visitInsn(IAND); break;
+            case "||": mv.visitInsn(IOR); break;
+
+            case "==":
+            case "=/=":
+            case "<":
+            case ">":
+            case "<=":
+            case ">=":
+                Label trueLabel = new Label();
+                Label endCmpLabel = new Label();
+                
+                // How we compare depends on the type
+                boolean isComparingFloats = node.left.type instanceof BaseType && ((BaseType) node.left.type).name.equals("FLOAT");
+
+                if (isComparingFloats) {
+                    mv.visitInsn(FCMPG); // Compare the 2 floats on top of the stack, result is -1, 0, or 1
+                    switch (node.operator) {
+                        case "==": mv.visitJumpInsn(IFEQ, trueLabel); break;
+                        case "=/=": mv.visitJumpInsn(IFNE, trueLabel); break;
+                        case "<": mv.visitJumpInsn(IFLT, trueLabel); break;
+                        case ">": mv.visitJumpInsn(IFGT, trueLabel); break;
+                        case "<=": mv.visitJumpInsn(IFLE, trueLabel); break;
+                        case ">=": mv.visitJumpInsn(IFGE, trueLabel); break;
+                    }
+                } else {
+                    // For integers, the JVM has direct instructions
+                    switch (node.operator) {
+                        case "==": mv.visitJumpInsn(IF_ICMPEQ, trueLabel); break;
+                        case "=/=": mv.visitJumpInsn(IF_ICMPNE, trueLabel); break;
+                        case "<": mv.visitJumpInsn(IF_ICMPLT, trueLabel); break;
+                        case ">": mv.visitJumpInsn(IF_ICMPGT, trueLabel); break;
+                        case "<=": mv.visitJumpInsn(IF_ICMPLE, trueLabel); break;
+                        case ">=": mv.visitJumpInsn(IF_ICMPGE, trueLabel); break;
+                    }
+                }
+
+                // Code if the condition is false
+                mv.visitInsn(ICONST_0);
+                mv.visitJumpInsn(GOTO, endCmpLabel);
+
+                // Code if the condition is true
+                mv.visitLabel(trueLabel);
+                mv.visitInsn(ICONST_1);
+
+                mv.visitLabel(endCmpLabel);
+                break;
         }
     }
 
@@ -177,5 +248,32 @@ public class CodeGenerator {
             visit(stmt);
         }
         slotManager.exitScope();
+    }
+
+    private void visitIfStatement(IfStatement node) {
+        Label elseLabel = new Label();
+        Label endLabel = new Label();
+
+        visit(node.condition); 
+        mv.visitJumpInsn(IFEQ, elseLabel);
+        visit(node.ifBlock);
+        mv.visitJumpInsn(GOTO, endLabel);
+        mv.visitLabel(elseLabel);
+        if (node.elseBlock != null) {
+            visit(node.elseBlock);
+        }
+        mv.visitLabel(endLabel);
+    }
+
+    private void visitWhileStatement(WhileStatement node) {
+        Label conditionLabel = new Label();
+        Label endLabel = new Label();
+
+        mv.visitLabel(conditionLabel);
+        visit(node.condition);
+        mv.visitJumpInsn(IFEQ, endLabel);
+        visit(node.body);
+        mv.visitJumpInsn(GOTO, conditionLabel);
+        mv.visitLabel(endLabel);
     }
 }
