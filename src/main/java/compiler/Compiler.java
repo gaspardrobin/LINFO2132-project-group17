@@ -1,35 +1,40 @@
 package compiler;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.Reader;
+
 import compiler.AST.Program;
 import compiler.Lexer.Lexer;
 import compiler.Lexer.Symbol;
 import compiler.Parser.Parser;
 import compiler.Semantic.SemanticAnalyzer;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.Reader;
-
 public class Compiler {
 
     public static void main(String[] args) {
-        String mode = "-semantic"; // mode par défaut pour Inginious
-        String path;
+        String mode = "-codegen"; // new mode for final phase
+        String sourceFile = null;
+        String targetFile = "Main.class"; // default name if -o is not provided
 
-        if (args.length == 1) {
-            path = args[0];
-        } else if (args.length == 2) {
-            mode = args[0];
-            path = args[1];
-        } else {
-            System.err.println("Usage: java compiler.Compiler [mode] <source_file>");
-            System.err.println("Modes available: -lexer, -parser, -semantic");
-            System.exit(1);
-            return;
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("-lexer") || args[i].equals("-parser") || args[i].equals("-semantic")) {
+                mode = args[i];
+            } else if (args[i].equals("-o")) {
+                if (i + 1 < args.length) {
+                    targetFile = args[i + 1];
+                    i++; // skip the next argument since it's the output file
+                } else {
+                    System.err.println("Error: -o option requires a filename");
+                    System.exit(1);
+                }
+            } else {
+                sourceFile = args[i];
+            }
         }
 
-        try (Reader r = new BufferedReader(new FileReader(path))) {
+        try (Reader r = new BufferedReader(new FileReader(sourceFile))) {
 
             if (mode.equals("-lexer")) {
                 Lexer lexer = new Lexer(r);
@@ -63,6 +68,21 @@ public class Compiler {
                 analyzer.analyze(ast);
 
                 System.out.println("Semantic analysis completed successfully.");
+                return;
+            }
+
+            if (mode.equals("-codegen")) {
+                Lexer lexer = new Lexer(r);
+                Parser parser = new Parser(lexer);
+                Program ast = parser.getAST();
+
+                SemanticAnalyzer analyzer = new SemanticAnalyzer();
+                analyzer.analyze(ast);
+
+                // TODO: Implement code generation and write to targetFile
+                // CodeGenerator generator = new CodeGenerator(targetFile);
+                // generator.generate(ast);
+                System.out.println("Code generation completed successfully. Output file: " + targetFile);
                 return;
             }
 
