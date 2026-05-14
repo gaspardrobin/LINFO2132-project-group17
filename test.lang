@@ -1,13 +1,214 @@
+final INT i = 3;
+final FLOAT j = 3.2 * 5.0;
+final INT k = i * 3;
+final STRING message = "Hello";
+final BOOL isEmpty = true;
+
 coll Point {
     INT x;
     INT y;
 }
 
+coll Person {
+    STRING name;
+    Point location;
+    INT[] history;
+}
+
+INT a = 3;
+INT[] c = INT ARRAY [5];
+Person d = Person("me", Point(3, 7), INT ARRAY [i * 2]);
+
+def INT square(INT v) {
+    return v * v;
+}
+
+def Point copyPoints(Point[] p) {
+    return Point(p[0].x + p[1].x, p[0].y + p[1].y);
+}
+
 def main() {
-    Point p = Point(10, 20);
+    print("Enter an integer: ");
+    INT value = read_INT();
 
-    println(p.x); # Expected : 10
+    print("square(value) = ");
+    print_INT(square(value));
+    println("");
 
-    p.y = p.y + 5;
-    println(p.y); # Expected : 25
+    print("Constants: ");
+    print_INT(i);
+    print(" ");
+    print_FLOAT(j);
+    print(" ");
+    print_INT(k);
+    print(" ");
+    print(message);
+    println("");
+
+    print("Global a = ");
+    print_INT(a);
+    println("");
+
+    c[0] = 10;
+    c[1] = 20;
+
+    print("Array c values: ");
+    print_INT(c[0]);
+    print(" ");
+    print_INT(c[1]);
+    println("");
+
+    print("Global person d: ");
+    print(d.name);
+    print(" ");
+    print_INT(d.location.x);
+    print(" ");
+    print_INT(d.location.y);
+    println("");
+
+    Person p = Person("local", Point(1, 2), INT ARRAY [4]);
+
+    print("Local person: ");
+    print(p.name);
+    print(" ");
+    print_INT(p.location.x);
+    print(" ");
+    print_INT(p.location.y);
+    println("");
+
+    p.location.x = 99;
+
+    print("Modified field: ");
+    print_INT(p.location.x);
+    println("");
+
+    Point[] points = Point ARRAY [2];
+    points[0] = Point(1, 2);
+    points[1] = Point(3, 4);
+
+    Point combined = copyPoints(points);
+
+    print("Combined point: ");
+    print_INT(combined.x);
+    print(" ");
+    print_INT(combined.y);
+    println("");
+
+    print("length(message) = ");
+    print_INT(length(message));
+    println("");
+
+    print("length(c) = ");
+    print_INT(length(c));
+    println("");
+
+    print("Enter a float: ");
+    FLOAT f = read_FLOAT();
+
+    print("floor(f) = ");
+    print_INT(floor(f));
+    println("");
+
+    print("ceil(f) = ");
+    print_INT(ceil(f));
+    println("");
+
+    print("str(65) = ");
+    print(str(65));
+    println("");
+
+    print("Enter a string: ");
+    STRING inputText = read_STRING();
+
+    print("read_STRING = ");
+    print(inputText);
+    println("");
+
+    BOOL ok = true && false;
+
+    if (ok) {
+        print("ERROR");
+    } else {
+        print("BOOL && works");
+    }
+    println("");
+
+    BOOL ok2 = true || false;
+
+    if (ok2) {
+        print("BOOL || works");
+    } else {
+        print("ERROR");
+    }
+    println("");
+
+    BOOL ok3 = not false;
+
+    if (ok3) {
+        print("not works");
+    } else {
+        print("ERROR");
+    }
+    println("");
+
+    INT x = 10;
+    INT y = 5;
+
+    print("INT ops: ");
+    print_INT(x + y);
+    print(" ");
+    print_INT(x - y);
+    print(" ");
+    print_INT(-x);
+    print(" ");
+    print_INT(x * y);
+    print(" ");
+    print_INT(x / y);
+    print(" ");
+    print_INT(x % y);
+    println("");
+
+    FLOAT fa = 10.5;
+    FLOAT fb = 5.2;
+
+    print("FLOAT ops: ");
+    print_FLOAT(fa + fb);
+    print(" ");
+    print_FLOAT(fa - fb);
+    print(" ");
+    print_FLOAT(-fa);
+    print(" ");
+    print_FLOAT(fa * fb);
+    print(" ");
+    print_FLOAT(fa / fb);
+    println("");
+
+    INT counter = 0;
+    INT total = 0;
+
+    while (counter < 5) {
+        counter = counter + 1;
+        total = total + counter;
+    }
+
+    print("While result: ");
+    print_INT(total);
+    println("");
+
+    INT loopVar = 0;
+
+    for (loopVar; 1 -> 5; loopVar + 1) {
+        if (loopVar > 3) {
+            print("High ");
+        } else {
+            print("Low ");
+        }
+    }
+    println("");
+
+    value = (value + 2) * 2;
+
+    print("Updated value = ");
+    print_INT(value);
+    println("");
 }

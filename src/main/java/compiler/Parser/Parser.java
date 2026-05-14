@@ -515,7 +515,18 @@ public class Parser {
 
             case COLLECTION: {
                 Identifier collName = parseCollectionName();
-                if (check(Symbol.Type.LPAR)) {
+                if (checkKeyword("ARRAY")) {
+                    advance();
+
+                    expect(Symbol.Type.LBRACKET);
+                    Expression size = parseExpression();
+                    expect(Symbol.Type.RBRACKET);
+
+                    expr = new compiler.AST.expressions.ArrayCreation(
+                        new CollectionType(collName),
+                        size
+                    );
+                } else if (check(Symbol.Type.LPAR)) {
                     List<Expression> args = parseArgumentList();
                     expr = new compiler.AST.expressions.CollectionInstantiation(collName, args);
                 } else {

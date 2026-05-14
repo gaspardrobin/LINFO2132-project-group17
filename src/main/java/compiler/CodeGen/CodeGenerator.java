@@ -2,18 +2,26 @@ package compiler.CodeGen;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map;
+
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import static org.objectweb.asm.Opcodes.AALOAD;
 import static org.objectweb.asm.Opcodes.AASTORE;
+import static org.objectweb.asm.Opcodes.ACC_FINAL;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ALOAD;
 import static org.objectweb.asm.Opcodes.ANEWARRAY;
+import static org.objectweb.asm.Opcodes.ARETURN;
+import static org.objectweb.asm.Opcodes.ARRAYLENGTH;
 import static org.objectweb.asm.Opcodes.ASTORE;
+import static org.objectweb.asm.Opcodes.D2I;
 import static org.objectweb.asm.Opcodes.DUP;
+import static org.objectweb.asm.Opcodes.F2D;
 import static org.objectweb.asm.Opcodes.FADD;
 import static org.objectweb.asm.Opcodes.FALOAD;
 import static org.objectweb.asm.Opcodes.FASTORE;
@@ -21,12 +29,15 @@ import static org.objectweb.asm.Opcodes.FCMPG;
 import static org.objectweb.asm.Opcodes.FDIV;
 import static org.objectweb.asm.Opcodes.FLOAD;
 import static org.objectweb.asm.Opcodes.FMUL;
+import static org.objectweb.asm.Opcodes.FNEG;
 import static org.objectweb.asm.Opcodes.FRETURN;
 import static org.objectweb.asm.Opcodes.FSTORE;
 import static org.objectweb.asm.Opcodes.FSUB;
 import static org.objectweb.asm.Opcodes.GETFIELD;
 import static org.objectweb.asm.Opcodes.GETSTATIC;
 import static org.objectweb.asm.Opcodes.GOTO;
+import static org.objectweb.asm.Opcodes.I2C;
+import static org.objectweb.asm.Opcodes.I2F;
 import static org.objectweb.asm.Opcodes.IADD;
 import static org.objectweb.asm.Opcodes.IALOAD;
 import static org.objectweb.asm.Opcodes.IAND;
@@ -48,16 +59,19 @@ import static org.objectweb.asm.Opcodes.IF_ICMPLT;
 import static org.objectweb.asm.Opcodes.IF_ICMPNE;
 import static org.objectweb.asm.Opcodes.ILOAD;
 import static org.objectweb.asm.Opcodes.IMUL;
+import static org.objectweb.asm.Opcodes.INEG;
 import static org.objectweb.asm.Opcodes.INVOKESPECIAL;
 import static org.objectweb.asm.Opcodes.INVOKESTATIC;
 import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
 import static org.objectweb.asm.Opcodes.IOR;
+import static org.objectweb.asm.Opcodes.IREM;
 import static org.objectweb.asm.Opcodes.IRETURN;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
 import static org.objectweb.asm.Opcodes.NEW;
 import static org.objectweb.asm.Opcodes.NEWARRAY;
 import static org.objectweb.asm.Opcodes.PUTFIELD;
+import static org.objectweb.asm.Opcodes.PUTSTATIC;
 import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.T_BOOLEAN;
 import static org.objectweb.asm.Opcodes.T_FLOAT;
@@ -67,6 +81,7 @@ import static org.objectweb.asm.Opcodes.V1_8;
 import compiler.AST.ASTNode;
 import compiler.AST.Program;
 import compiler.AST.declarations.CollectionDefinition;
+import compiler.AST.declarations.ConstantDeclaration;
 import compiler.AST.declarations.FieldDeclaration;
 import compiler.AST.declarations.FunctionDefinition;
 import compiler.AST.expressions.ArrayAccess;
@@ -81,9 +96,11 @@ import compiler.AST.expressions.FunctionCall;
 import compiler.AST.expressions.Identifier;
 import compiler.AST.expressions.IntegerLiteral;
 import compiler.AST.expressions.StringLiteral;
+import compiler.AST.expressions.UnaryExpression;
 import compiler.AST.statements.Assignment;
 import compiler.AST.statements.Block;
 import compiler.AST.statements.ExpressionStatement;
+import compiler.AST.statements.ForStatement;
 import compiler.AST.statements.IfStatement;
 import compiler.AST.statements.ReturnStatement;
 import compiler.AST.statements.VariableDeclaration;
@@ -99,10 +116,16 @@ public class CodeGenerator {
     private ClassWriter cw;
     private MethodVisitor mv;
     private SlotManager slotManager;
+    private Map<String, TypeNode> globals = new HashMap<>();
+    private Map<String, Boolean> globalIsFinal = new HashMap<>();
 
     public CodeGenerator(String targetFile) {
         this.targetFile = targetFile;
-        this.className = targetFile.replace(".class", "");
+
+        File f = new File(targetFile);
+
+        String filename = f.getName(); 
+        this.className = filename.replace(".class", ""); 
     }
 
     public void generate (Program program) {
@@ -112,13 +135,47 @@ public class CodeGenerator {
         generateDefaultConstructor();
 
         for (var node : program.declarations) {
-            if (node instanceof FunctionDefinition) {
-                generateFunction((FunctionDefinition) node);
-            } else if (node instanceof CollectionDefinition) {
-                generateCollection((CollectionDefinition) node);
+            if (node instanceof ConstantDeclaration) {
+                ConstantDeclaration c = (ConstantDeclaration) node;
+
+                cw.visitField(
+                    ACC_PUBLIC + ACC_STATIC + ACC_FINAL,
+                    c.name.name,
+                    getTypeDescriptor(c.type),
+                    null,
+                    null
+                ).visitEnd();
+
+                globals.put(c.name.name, c.type);
+                globalIsFinal.put(c.name.name, true);
+
+            } else if (node instanceof VariableDeclaration) {
+                VariableDeclaration v = (VariableDeclaration) node;
+
+                cw.visitField(
+                    ACC_PUBLIC + ACC_STATIC,
+                    v.identifier.name,
+                    getTypeDescriptor(v.type),
+                    null,
+                    null
+                ).visitEnd();
+
+                globals.put(v.identifier.name, v.type);
+                globalIsFinal.put(v.identifier.name, false);
             }
-            // TODO: handle global variables
         }
+
+        generateGlobalInitializer(program);
+
+        // 3. Générer collections et fonctions
+        for (var node : program.declarations) {
+            if (node instanceof CollectionDefinition) {
+                generateCollection((CollectionDefinition) node);
+            } else if (node instanceof FunctionDefinition) {
+                generateFunction((FunctionDefinition) node);
+            }
+        }
+
 
         cw.visitEnd();
 
@@ -128,6 +185,52 @@ public class CodeGenerator {
             e.printStackTrace();
         }
     }
+
+    private void generateGlobalInitializer(Program program) {
+        MethodVisitor oldMv = mv;
+        SlotManager oldSlotManager = slotManager;
+
+        mv = cw.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
+        mv.visitCode();
+
+        slotManager = new SlotManager(true);
+
+        for (var node : program.declarations) {
+            if (node instanceof ConstantDeclaration) {
+                ConstantDeclaration c = (ConstantDeclaration) node;
+
+                visit(c.value);
+                addIntToFloatConversionIfNeeded(c.type, c.value.type);
+
+                mv.visitFieldInsn(PUTSTATIC, className, c.name.name, getTypeDescriptor(c.type));
+            } else if (node instanceof VariableDeclaration) {
+                VariableDeclaration v = (VariableDeclaration) node;
+
+                if (v.initializer != null) {
+                    visit(v.initializer);
+                    addIntToFloatConversionIfNeeded(v.type, v.initializer.type);
+
+                    mv.visitFieldInsn(PUTSTATIC, className, v.identifier.name, getTypeDescriptor(v.type));
+                }
+            }
+        }
+
+        mv.visitInsn(RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        mv = oldMv;
+        slotManager = oldSlotManager;
+    }
+
+    private void addIntToFloatConversionIfNeeded(TypeNode target, TypeNode actual) {
+    if (target instanceof BaseType &&
+        ((BaseType) target).name.equals("FLOAT") &&
+        actual instanceof BaseType &&
+        ((BaseType) actual).name.equals("INT")) {
+        mv.visitInsn(I2F);
+    }
+}
 
     private void generateDefaultConstructor() {
         MethodVisitor constructor = cw.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
@@ -168,9 +271,11 @@ public class CodeGenerator {
         mv.visitCode();
         visit(node.body);
 
-        // Add RETURN only if the function is void or main (which is always void). For non-void functions, we expect a return statement to provide the return value.
-        if (funcName.equals("main") || (node.returnType != null && ((compiler.AST.types.BaseType)node.returnType).name.equals("VOID"))) {
-            mv.visitInsn(RETURN); 
+        // Add RETURN only if the function is void, no type or main. 
+        if (funcName.equals("main") || node.returnType == null ||
+            (node.returnType instanceof compiler.AST.types.BaseType &&
+            ((compiler.AST.types.BaseType) node.returnType).name.equals("VOID"))) {
+            mv.visitInsn(RETURN);
         }
         
         mv.visitMaxs(0, 0); 
@@ -219,7 +324,12 @@ public class CodeGenerator {
         collCw.visitEnd();
 
         // Write the physical file (e.g., Point.class)
-        try (FileOutputStream fos = new FileOutputStream(new File(collName + ".class"))) {
+        File mainFile = new File(targetFile);
+        File outputDir = mainFile.getAbsoluteFile().getParentFile();
+
+        File collectionFile = new File(outputDir, collName + ".class");
+
+        try (FileOutputStream fos = new FileOutputStream(collectionFile)) {
             fos.write(collCw.toByteArray());
         } catch (Exception e) {
             e.printStackTrace();
@@ -253,10 +363,12 @@ public class CodeGenerator {
         else if (node instanceof ExpressionStatement) visitExpressionStatement((ExpressionStatement) node);
         else if (node instanceof IntegerLiteral) visitIntegerLiteral((IntegerLiteral) node);
         else if (node instanceof BinaryExpression) visitBinaryExpression((BinaryExpression) node);
+        else if (node instanceof UnaryExpression) visitUnaryExpression((UnaryExpression) node);
         else if (node instanceof Identifier) visitIdentifier((Identifier) node);
         else if (node instanceof FunctionCall) visitFunctionCall((FunctionCall) node);
         else if (node instanceof IfStatement) visitIfStatement((IfStatement) node);
         else if (node instanceof WhileStatement) visitWhileStatement((WhileStatement) node);
+        else if (node instanceof ForStatement) visitForStatement((ForStatement) node);
         else if (node instanceof FloatLiteral) visitFloatLiteral((FloatLiteral) node);
         else if (node instanceof BooleanLiteral) visitBooleanLiteral((BooleanLiteral) node);
         else if (node instanceof StringLiteral) visitStringLiteral((StringLiteral) node);
@@ -266,7 +378,6 @@ public class CodeGenerator {
         else if (node instanceof ArrayAccess) visitArrayAccess((ArrayAccess) node);
         else if (node instanceof CollectionInstantiation) visitCollectionInstantiation((CollectionInstantiation) node);
         else if (node instanceof FieldAccess) visitFieldAccess((FieldAccess) node);
-        // TODO: add more visit methods for other node types (if, while, return, etc.)
     }
 
     private void visitIntegerLiteral(IntegerLiteral node) {
@@ -285,7 +396,8 @@ public class CodeGenerator {
             case "-": mv.visitInsn(isFloat ? FSUB : ISUB); break;
             case "*": mv.visitInsn(isFloat ? FMUL : IMUL); break;
             case "/": mv.visitInsn(isFloat ? FDIV : IDIV); break;
-
+            
+            case "%": mv.visitInsn(IREM); break;
             case "&&": mv.visitInsn(IAND); break;
             case "||": mv.visitInsn(IOR); break;
 
@@ -336,9 +448,52 @@ public class CodeGenerator {
         }
     }
 
+    private void visitForStatement(ForStatement node) {
+        boolean hasOwnLoopScope = node.varType != null;
+
+        if (hasOwnLoopScope) {
+            slotManager.enterScope();
+        }
+
+        int slot;
+
+        if (node.varType != null) {
+            slot = slotManager.declareVariable(node.varName.name);
+        } else {
+            slot = slotManager.getSlot(node.varName.name);
+        }
+
+        visit(node.rangeStart);
+        mv.visitVarInsn(ISTORE, slot);
+
+        Label conditionLabel = new Label();
+        Label endLabel = new Label();
+
+        mv.visitLabel(conditionLabel);
+
+        mv.visitVarInsn(ILOAD, slot);
+        visit(node.rangeEnd);
+
+        mv.visitJumpInsn(IF_ICMPGE, endLabel);
+
+        visit(node.body);
+
+        visit(node.step);
+        mv.visitVarInsn(ISTORE, slot);
+
+        mv.visitJumpInsn(GOTO, conditionLabel);
+
+        mv.visitLabel(endLabel);
+
+        if (hasOwnLoopScope) {
+            slotManager.exitScope();
+        }
+    }
+
     private void visitVariableDeclaration(VariableDeclaration node) {
         if (node.initializer != null) {
             visit(node.initializer);
+            addIntToFloatConversionIfNeeded(node.type, node.initializer.type);
             int slot = slotManager.declareVariable(node.identifier.name);
 
             if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
@@ -356,6 +511,11 @@ public class CodeGenerator {
     }
 
     private void visitIdentifier(Identifier node) {
+        if (globals.containsKey(node.name)) {
+            TypeNode type = globals.get(node.name);
+            mv.visitFieldInsn(GETSTATIC, className, node.name, getTypeDescriptor(type));
+            return;
+        }
         int slot = slotManager.getSlot(node.name);
         if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
             mv.visitVarInsn(FLOAD, slot);
@@ -370,19 +530,108 @@ public class CodeGenerator {
 
     private void visitFunctionCall(FunctionCall node) {
         String funcName = node.functionName.name;
+
+        if (funcName.equals("println") && node.arguments.isEmpty()) {
+            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "()V", false);
+            return;
+        }
+
+        if (funcName.equals("read_INT")) {
+            mv.visitTypeInsn(NEW, "java/util/Scanner");
+            mv.visitInsn(DUP);
+            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "in", "Ljava/io/InputStream;");
+            mv.visitMethodInsn(INVOKESPECIAL, "java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V", false);
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/Scanner", "nextInt", "()I", false);
+            return;
+        }
+
+        if (funcName.equals("read_FLOAT")) {
+            mv.visitTypeInsn(NEW, "java/util/Scanner");
+            mv.visitInsn(DUP);
+            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "in", "Ljava/io/InputStream;");
+            mv.visitMethodInsn(INVOKESPECIAL, "java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V", false);
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/Scanner", "nextFloat", "()F", false);
+            return;
+        }
+
+        if (funcName.equals("read_STRING")) {
+            mv.visitTypeInsn(NEW, "java/util/Scanner");
+            mv.visitInsn(DUP);
+            mv.visitFieldInsn(GETSTATIC, "java/lang/System", "in", "Ljava/io/InputStream;");
+            mv.visitMethodInsn(INVOKESPECIAL, "java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V", false);
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/Scanner", "next", "()Ljava/lang/String;", false);
+            return;
+        }
+
+        if (funcName.equals("length")) {
+            Expression arg = node.arguments.get(0);
+            visit(arg);
+
+            if (arg.type instanceof BaseType && ((BaseType) arg.type).name.equals("STRING")) {
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
+            } else if (arg.type instanceof ArrayType) {
+                mv.visitInsn(ARRAYLENGTH);
+            }
+            return;
+        }
+
+        if (funcName.equals("floor")) {
+            visit(node.arguments.get(0));
+            mv.visitInsn(F2D);
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/Math", "floor", "(D)D", false);
+            mv.visitInsn(D2I);
+            return;
+        }
+
+        if (funcName.equals("ceil")) {
+            visit(node.arguments.get(0));
+            mv.visitInsn(F2D);
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/Math", "ceil", "(D)D", false);
+            mv.visitInsn(D2I);
+            return;
+        }
+
+        if (funcName.equals("str")) {
+            visit(node.arguments.get(0));
+            mv.visitInsn(I2C);
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/String", "valueOf", "(C)Ljava/lang/String;", false);
+            return;
+        }
         
-        if (node.functionName.name.equals("print") || node.functionName.name.equals("println")) {
+        if (
+            funcName.equals("print") ||
+            funcName.equals("println") ||
+            funcName.equals("print_INT") ||
+            funcName.equals("print_FLOAT")
+        ) {
             mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
             visit(node.arguments.get(0));
 
-            String signature = "(I)V"; // Default (Integer)
+            String signature = "(I)V";
+
             if (node.arguments.get(0).type instanceof compiler.AST.types.BaseType) {
                 String typeName = ((compiler.AST.types.BaseType) node.arguments.get(0).type).name;
-                if (typeName.equals("FLOAT")) signature = "(F)V";
-                else if (typeName.equals("BOOL")) signature = "(Z)V"; // Z is the JVM descriptor for boolean
+
+                if (typeName.equals("FLOAT")) {
+                    signature = "(F)V";
+                } else if (typeName.equals("BOOL")) {
+                    signature = "(Z)V";
+                } else if (typeName.equals("STRING")) {
+                    signature = "(Ljava/lang/String;)V";
+                } else if (typeName.equals("INT")) {
+                    signature = "(I)V";
+                }
             }
-            
-            String methodName = node.functionName.name.equals("println") ? "println" : "print";
+
+            String methodName;
+
+            if (funcName.equals("println")) {
+                methodName = "println";
+            } else {
+                methodName = "print";
+            }
+
             mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", methodName, signature, false);
         } else {
             // Custom functions call
@@ -399,6 +648,30 @@ public class CodeGenerator {
 
     private void visitExpressionStatement(ExpressionStatement node) {
         visit(node.expression);
+    }
+
+    private void visitUnaryExpression(UnaryExpression node) {
+        visit(node.operand);
+
+        if (node.operator.equals("-")) {
+            if (node.type instanceof BaseType && ((BaseType) node.type).name.equals("FLOAT")) {
+                mv.visitInsn(FNEG);
+            } else {
+                mv.visitInsn(INEG);
+            }
+        } else if (node.operator.equals("not")) {
+            Label trueLabel = new Label();
+            Label endLabel = new Label();
+
+            mv.visitJumpInsn(IFEQ, trueLabel);
+            mv.visitInsn(ICONST_0);
+            mv.visitJumpInsn(GOTO, endLabel);
+
+            mv.visitLabel(trueLabel);
+            mv.visitInsn(ICONST_1);
+
+            mv.visitLabel(endLabel);
+        }
     }
 
     private void visitBlock(Block node) {
@@ -450,17 +723,27 @@ public class CodeGenerator {
 
     private void visitAssignment(Assignment node) {
         if (node.lhs instanceof Identifier) {
+            Identifier id = (Identifier) node.lhs;
             visit(node.rhs);
-            int slot = slotManager.getSlot(((Identifier) node.lhs).name);
+            addIntToFloatConversionIfNeeded(node.lhs.type, node.rhs.type);
+
+            if (globals.containsKey(id.name)) {
+                mv.visitFieldInsn(PUTSTATIC, className, id.name, getTypeDescriptor(node.lhs.type));
+                return;
+            }
+
+            int slot = slotManager.getSlot(id.name);
+
             if (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("FLOAT")) {
                 mv.visitVarInsn(FSTORE, slot);
-            } else if (node.lhs.type instanceof ArrayType || node.lhs.type instanceof CollectionType || 
-                      (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("STRING"))) {
-                mv.visitVarInsn(org.objectweb.asm.Opcodes.ASTORE, slot);
+            } else if (node.lhs.type instanceof ArrayType ||
+                    node.lhs.type instanceof CollectionType ||
+                    (node.lhs.type instanceof BaseType && ((BaseType) node.lhs.type).name.equals("STRING"))) {
+                mv.visitVarInsn(ASTORE, slot);
             } else {
                 mv.visitVarInsn(ISTORE, slot);
             }
-            
+
         } else if (node.lhs instanceof ArrayAccess) {
             ArrayAccess aa = (ArrayAccess) node.lhs;
             
@@ -491,8 +774,18 @@ public class CodeGenerator {
     private void visitReturnStatement(ReturnStatement node) {
         if (node.returnValue != null) {
             visit(node.returnValue);
-            if (node.returnValue.type instanceof BaseType && ((BaseType) node.returnValue.type).name.equals("FLOAT")) {
+
+            if (node.returnValue.type instanceof BaseType &&
+                ((BaseType) node.returnValue.type).name.equals("FLOAT")) {
+
                 mv.visitInsn(FRETURN);
+            } else if (
+                node.returnValue.type instanceof ArrayType ||
+                node.returnValue.type instanceof CollectionType ||
+                (node.returnValue.type instanceof BaseType &&
+                ((BaseType) node.returnValue.type).name.equals("STRING"))
+            ) {
+                mv.visitInsn(ARETURN);
             } else {
                 mv.visitInsn(IRETURN);
             }
