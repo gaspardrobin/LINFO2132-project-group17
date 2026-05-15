@@ -70,6 +70,7 @@ import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.ISUB;
 import static org.objectweb.asm.Opcodes.NEW;
 import static org.objectweb.asm.Opcodes.NEWARRAY;
+import static org.objectweb.asm.Opcodes.POP;
 import static org.objectweb.asm.Opcodes.PUTFIELD;
 import static org.objectweb.asm.Opcodes.PUTSTATIC;
 import static org.objectweb.asm.Opcodes.RETURN;
@@ -121,9 +122,7 @@ public class CodeGenerator {
 
     public CodeGenerator(String targetFile) {
         this.targetFile = targetFile;
-
         File f = new File(targetFile);
-
         String filename = f.getName(); 
         this.className = filename.replace(".class", ""); 
     }
@@ -176,7 +175,6 @@ public class CodeGenerator {
             }
         }
 
-
         cw.visitEnd();
 
         try (FileOutputStream fos = new FileOutputStream(new File(targetFile))) {
@@ -185,7 +183,6 @@ public class CodeGenerator {
             e.printStackTrace();
         }
     }
-
     private void generateGlobalInitializer(Program program) {
         MethodVisitor oldMv = mv;
         SlotManager oldSlotManager = slotManager;
@@ -326,7 +323,6 @@ public class CodeGenerator {
         // Write the physical file (e.g., Point.class)
         File mainFile = new File(targetFile);
         File outputDir = mainFile.getAbsoluteFile().getParentFile();
-
         File collectionFile = new File(outputDir, collName + ".class");
 
         try (FileOutputStream fos = new FileOutputStream(collectionFile)) {
@@ -551,6 +547,8 @@ public class CodeGenerator {
             mv.visitInsn(DUP);
             mv.visitFieldInsn(GETSTATIC, "java/lang/System", "in", "Ljava/io/InputStream;");
             mv.visitMethodInsn(INVOKESPECIAL, "java/util/Scanner", "<init>", "(Ljava/io/InputStream;)V", false);
+            mv.visitFieldInsn(GETSTATIC, "java/util/Locale", "US", "Ljava/util/Locale;");
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/Scanner", "useLocale", "(Ljava/util/Locale;)Ljava/util/Scanner;", false);
             mv.visitMethodInsn(INVOKEVIRTUAL, "java/util/Scanner", "nextFloat", "()F", false);
             return;
         }
@@ -666,10 +664,8 @@ public class CodeGenerator {
             mv.visitJumpInsn(IFEQ, trueLabel);
             mv.visitInsn(ICONST_0);
             mv.visitJumpInsn(GOTO, endLabel);
-
             mv.visitLabel(trueLabel);
             mv.visitInsn(ICONST_1);
-
             mv.visitLabel(endLabel);
         }
     }
